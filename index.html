@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8'/>
+<meta name='viewport' content='width=device-width,initial-scale=1'/>
+<title>FIRE Wizard – Export & Import JSON</title>
+<style>
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#fff;color:#111;padding:1rem;}
+.container{max-width:900px;margin:auto;}
+.tabs{display:flex;gap:.5rem;overflow-x:auto;white-space:nowrap;padding-bottom:.5rem;margin-bottom:1rem;border-bottom:1px solid #ddd}
+.tabs button{flex:0 0 auto;border:1px solid #ccc;background:#f8f8f8;padding:.5rem 1rem;border-radius:.5rem;cursor:pointer;font-weight:600;color:#111}
+.tabs button.active{background:#111;color:#fff}
+.row{display:flex;align-items:center;margin:.75rem 0;gap:.75rem}
+input[type='number'],input[type='text']{flex:1;padding:.6rem;border:1px solid #ccc;border-radius:.25rem;font-size:1rem}
+button{cursor:pointer;padding:.4rem .8rem;border-radius:.5rem;border:1px solid #ccc;background:#111;color:#fff;font-size:.9rem}
+button.ghost{background:#fff;color:#111}
+button.del{background:#dc2626;color:#fff;border:none;font-size:.9rem}
+.add-row{margin-top:.5rem;text-align:right}
+.total-box{margin-top:1rem;font-weight:700;font-size:1.1rem;text-align:right;color:#111;padding:.5rem;border-top:1px solid #ddd}
+.save-load{display:flex;justify-content:flex-end;gap:.5rem;margin:1rem 0;}
+
+/* Summary table professional style */
+.summary-section{display:grid;gap:1rem;margin-top:1.5rem;}
+.summary-card{border:1px solid #ddd;border-radius:8px;padding:1rem;background:#fafafa;box-shadow:0 1px 2px rgba(0,0,0,0.05);}
+.summary-card h4{margin:0 0 .8rem;font-size:1.1rem;color:#222;border-bottom:1px solid #eee;padding-bottom:.4rem;}
+.summary-table{width:100%;border-collapse:collapse;font-size:1rem;}
+.summary-table th,.summary-table td{padding:.6rem;text-align:right;border-bottom:1px solid #eee;}
+.summary-table th:first-child,.summary-table td:first-child{text-align:left;}
+.summary-table tr:last-child th,.summary-table tr:last-child td{border-bottom:none;}
+.summary-highlight{font-weight:700;color:#111;}
+</style>
+</head>
+<body>
+<div class='container'>
+  <h1>FIRE Wizard</h1>
+  <p>Save and download your FIRE data as a <b>fire.json</b> file or import it anytime later.</p>
+  <div class='save-load'>
+    <button class='ghost' onclick='downloadData()'>💾 Export JSON</button>
+    <input type='file' id='fileInput' accept='application/json' style='display:none' onchange='importData(event)'>
+    <button class='ghost' onclick='document.getElementById("fileInput").click()'>📂 Import JSON</button>
+  </div>
+  <div class='tabs' id='tabs'></div>
+  <div id='panels'></div>
+  <div class='row'>
+    <button class='ghost' id='prevBtn'>◀ Back</button>
+    <button id='nextBtn'>Next ▶</button>
+  </div>
+</div>
+<script>
+const Rs=n=>new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:0}).format(n||0);
+const tabs=['Non‑Negotiable Core','Negotiable Core','Summary'];
+let idx=0;
+let data={nonneg:[{label:'Property Tax',val:1500},{label:'Utilities',val:3500},{label:'Groceries',val:18000},{label:'Transport',val:4000},{label:'Insurance',val:3000}],negotiable:[{label:'Travel',val:12000},{label:'Dining',val:4000},{label:'Entertainment',val:1200},{label:'Gadgets',val:1500},{label:'Gym',val:800}],asm:{infl:6,swr:4,age:35,ret:40}};
+
+function renderTabs(){const wrap=document.getElementById('tabs');wrap.innerHTML='';tabs.forEach((t,i)=>{const b=document.createElement('button');b.textContent=`${i+1}. ${t}`;b.className=i===idx?'active':'';b.onclick=()=>{idx=i;render()};wrap.appendChild(b);})}
+function sum(arr){return arr.reduce((a,b)=>a+(+b.val||0),0)}
+function compute(){const infl=data.asm.infl/100;const yrs=data.asm.ret-data.asm.age;const swr=data.asm.swr/100;const totalNonneg=sum(data.nonneg);const totalNegotiable=sum(data.negotiable);const monthly=totalNonneg+totalNegotiable;const ann=monthly*12;const annR=ann*Math.pow(1+infl,yrs);const corpus=annR/swr;return{yrs,totalNonneg,totalNegotiable,monthly,ann,annR,corpus}}
+function addRowHTML(label,val,group,i){return`<div class='row'><input type='text' value='${label}' data-label='true' data-group='${group}' data-idx='${i}'/><input type='number' value='${val}' data-group='${group}' data-idx='${i}'/><button class='del' onclick='deleteItem("${group}",${i})'>✖</button></div>`}
+function deleteItem(group,i){data[group].splice(i,1);render();}
+function bindInputs(){document.querySelectorAll('input').forEach(el=>el.oninput=e=>{const g=e.target.dataset.group;const i=e.target.dataset.idx;if(g&&i!==undefined){if(e.target.dataset.label){data[g][i].label=e.target.value}else{data[g][i].val=+e.target.value||0}}})}
+function panelGeneric(group,title){let html=`<h3>${title} (₹/mo)</h3>`;data[group].forEach((r,i)=>{html+=addRowHTML(r.label,r.val,group,i)});const subtotal=Rs(sum(data[group]));html+=`<div class='add-row'><button class='ghost' onclick='addField("${group}")'>+ Add Item</button></div>`;html+=`<div class='total-box'>Subtotal: ${subtotal}/month</div>`;return html;}
+function addField(group){data[group].push({label:'New Item',val:0});render();}
+function panelNonneg(){return panelGeneric('nonneg','Non‑Negotiable Core');}
+function panelNegotiable(){return panelGeneric('negotiable','Negotiable Core');}
+function panelSum(){const r=compute();return`
+  <div class='summary-section'>
+    <div class='summary-card'>
+      <h4>Monthly Breakdown</h4>
+      <table class='summary-table'>
+        <tr><th>Category</th><th>Monthly Total</th></tr>
+        <tr><td>Non‑Negotiable</td><td>${Rs(r.totalNonneg)}</td></tr>
+        <tr><td>Negotiable</td><td>${Rs(r.totalNegotiable)}</td></tr>
+        <tr class='summary-highlight'><th>Total Monthly</th><th>${Rs(r.monthly)}</th></tr>
+      </table>
+    </div>
+
+    <div class='summary-card'>
+      <h4>Retirement Projection</h4>
+      <table class='summary-table'>
+        <tr><th>Projection</th><th>Value</th></tr>
+        <tr><td>Years to Retire</td><td>${r.yrs}</td></tr>
+        <tr><td>Annual Spend Today</td><td>${Rs(r.ann)}</td></tr>
+        <tr><td>Annual Spend @Retirement</td><td>${Rs(r.annR)}</td></tr>
+        <tr class='summary-highlight'><td>Corpus Needed</td><td>${Rs(r.corpus)}</td></tr>
+      </table>
+    </div>
+  </div>`;}
+
+function downloadData(){const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='fire.json';a.click();URL.revokeObjectURL(url);}
+function importData(event){const file=event.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=e=>{try{data=JSON.parse(e.target.result);render();alert('✅ Data imported successfully!');}catch(err){alert('❌ Invalid JSON file.');}};reader.readAsText(file);}
+
+function render(){renderTabs();const p=document.getElementById('panels');const panels=[panelNonneg,panelNegotiable,panelSum];p.innerHTML=panels[idx]();bindInputs();}
+render();document.getElementById('prevBtn').onclick=()=>{if(idx>0){idx--;render()}};document.getElementById('nextBtn').onclick=()=>{if(idx<tabs.length-1){idx++;render()}};
+</script>
+</body>
+</html>
